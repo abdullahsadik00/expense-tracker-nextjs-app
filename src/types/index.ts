@@ -2,8 +2,8 @@ export interface Transaction {
     id?: string;
     Date: string;
     Details: string;
-    Debit: number | null;
-    Credit: number | null;
+    Debit: string; // Use string to accommodate '-' for no debit  number | null;
+    Credit: string; // Use string to accommodate '-' for no debit  number | null;
     Balance: number;
     Category?: string;
     ExtractedInfo: {
