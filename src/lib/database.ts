@@ -2,6 +2,28 @@ import { readFileSync,writeFileSync,promises as fs } from "fs";
 import path from "path";
 import { Transaction } from "@/types";
 
+// lib/database.ts
+import { Pool } from 'pg';
+import { drizzle } from 'drizzle-orm/node-postgres';
+import { migrate } from 'drizzle-orm/node-postgres/migrator';
+
+console.log('Database URL:', process.env.DATABASE_URL);
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+});
+
+export const db = drizzle(pool);
+
+// Initialize database
+export async function initializeDatabase() {
+  try {
+    await migrate(db, { migrationsFolder: './drizzle' });
+    console.log('Database migrated successfully');
+  } catch (error) {
+    console.error('Database migration failed:', error);
+  }
+}
+
 const DATA_PATH = path.join(process.cwd(), 'data', 'transactions.json');
 
 export class Database {
