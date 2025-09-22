@@ -1,68 +1,59 @@
-
-import 'dotenv/config';
-import { db } from '@/lib/database';
-import { transactions, accounts, categories } from '@/db/schema';
+// scripts/import-data-enhanced.ts
+import { Pool } from 'pg';
 import { readFileSync } from 'fs';
 import path from 'path';
-import { createSchema } from './create-schema';
-import { InferInsertModel } from 'drizzle-orm';
-import url from 'url';
+import 'dotenv/config';
 
-// Infer type for transaction insert
-type NewTransaction = InferInsertModel<typeof transactions>;
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+});
 
-async function importData() {
+async function importDataEnhanced() {
+  const client = await pool.connect();
+  
   try {
-    console.log('📦 Starting data import...');
+    console.log('Starting enhanced data import...');
 
-    // Step 1: Create schema if needed
-    await createSchema();
-
-    // Step 2: Load JSON data
+    // Read your JSON data
     const filePath = path.join(process.cwd(), 'src', 'data', 'transactions.json');
-    console.log('📄 Reading file from:', filePath);
-
     const jsonData = JSON.parse(readFileSync(filePath, 'utf8'));
-    console.log(`✅ Found ${jsonData.length} transactions in JSON`);
+    console.log(`Found ${jsonData.length} transactions in JSON`);
 
-    // Step 3: Create default account
-    console.log('🏦 Creating default account...');
-    const [account] = await db
-      .insert(accounts)
-      .values({
-        name: 'My Personal Account',
-        type: 'personal',
-        balance: '0.00', // Must be a string for `decimal` in Drizzle
-      })
-      .returning();
+    // Get bank accounts (assuming SBI is account 1)
+    const accountsResult = await client.query('SELECT id, bank_name FROM bank_accounts');
+    const accounts = accountsResult.rows;
+    console.log('Available accounts:', accounts);
 
-    // Step 4: Create default categories
-    console.log('📚 Creating default categories...');
-    const defaultCategories = [
-      { name: 'Transfer', type: 'transfer' },
-      { name: 'Food', type: 'expense' },
-      { name: 'Utilities', type: 'expense' },
-      { name: 'Rent', type: 'expense' },
-      { name: 'Salary', type: 'income' },
-      { name: 'Investment', type: 'income' },
-    ];
+    // Default to SBI account for existing transactions
+    const defaultAccountId = accounts.find(acc => acc.bank_name === 'SBI')?.id || 1;
 
-    for (const category of defaultCategories) {
-      await db.insert(categories).values(category).onConflictDoNothing();
-    }
+    // Get categories
+    const categoriesResult = await client.query('SELECT id, name FROM categories');
+    const categoryMap = new Map();
+    categoriesResult.rows.forEach(row => {
+      categoryMap.set(row.name, row.id);
+    });
 
-    // Step 5: Load all categories into a Map
-    const categoryMap = new Map<string, number>();
-    const allCategories = await db.select().from(categories);
-    allCategories.forEach((cat) => categoryMap.set(cat.name, cat.id));
+    // Import transactions with closing balance calculation
+    console.log('Importing transactions with closing balances...');
+    
+    // Sort transactions by date for proper balance calculation
+    const sortedTransactions = jsonData.sort((a: any, b: any) => 
+      new Date(a.Date).getTime() - new Date(b.Date).getTime()
+    );
 
-    // Step 6: Import transactions
-    console.log('📥 Importing transactions...');
-    let importedCount = 0;
-
-    for (const item of jsonData) {
+    let currentBalance = 84125.25; // Starting balance for SBI
+    
+    for (const item of sortedTransactions) {
       const amount = item.Debit !== '-' ? parseFloat(item.Debit) : parseFloat(item.Credit);
       const type = item.Debit !== '-' ? 'expense' : 'income';
+      
+      // Update balance
+      if (type === 'income') {
+        currentBalance += amount;
+      } else {
+        currentBalance -= amount;
+      }
 
       // Determine category
       let categoryId = categoryMap.get('Transfer'); // default
@@ -70,37 +61,51 @@ async function importData() {
         categoryId = categoryMap.get(item.Category);
       }
 
-      const tx: NewTransaction = {
-        accountId: account.id,
-        categoryId: categoryId!,
-        date: item.Date, // Drizzle expects string for date, ISO format preferred
-        amount: Math.abs(amount).toFixed(2), // string for decimal
-        type: type,
-        description: item.Details,
-        merchant: item.ExtractedInfo?.name,
-        referenceId: item.ExtractedInfo?.transactionId,
-        bankCode: item.ExtractedInfo?.bankCode,
-        isInvestment: item.Category.toLowerCase().includes('investment'),
-        isRecurring: ['rent', 'electricity', 'wifi', 'telephone'].some((word) =>
-          item.Details.toLowerCase().includes(word)
-        ),
-      };
-
-      await db.insert(transactions).values(tx);
-
-      importedCount++;
-      if (importedCount % 100 === 0) {
-        console.log(`🔄 Imported ${importedCount} transactions...`);
-      }
+      await client.query(
+        `INSERT INTO transactions 
+         (bank_account_id, category_id, transaction_date, amount, type, description, 
+          merchant, reference_number, closing_balance, is_investment, is_recurring)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+        [
+          defaultAccountId,
+          categoryId,
+          new Date(item.Date),
+          Math.abs(amount),
+          type,
+          item.Details,
+          item.ExtractedInfo?.name,
+          item.ExtractedInfo?.transactionId,
+          currentBalance,
+          item.Category.toLowerCase().includes('investment'),
+          ['rent', 'electricity', 'wifi', 'telephone', 'gas'].some(word => 
+            item.Details.toLowerCase().includes(word)
+          )
+        ]
+      );
     }
 
-    console.log(`🎉 Successfully imported ${importedCount} transactions!`);
+    // Update account balance
+    await client.query(
+      'UPDATE bank_accounts SET current_balance = $1 WHERE id = $2',
+      [currentBalance, defaultAccountId]
+    );
+
+    console.log('Enhanced data import completed successfully!');
+    console.log(`Final SBI account balance: ₹${currentBalance.toLocaleString('en-IN')}`);
+    
   } catch (error) {
-    console.error('❌ Import failed:', error);
+    console.error('Import failed:', error);
+  } finally {
+    client.release();
+    await pool.end();
   }
 }
 
-// Run script if executed directly
-if (url.fileURLToPath(import.meta.url) === process.argv[1]) {
-  importData().catch(console.error);
+if (require.main === module) {
+  importDataEnhanced()
+    .then(() => process.exit(0))
+    .catch(error => {
+      console.error('Script failed:', error);
+      process.exit(1);
+    });
 }
