@@ -3,6 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import AddTransactionForm from '@/components/AddTransactionForm';
+import TransactionModal from '@/components/TransactionModal';
 
 interface Transaction {
   id: number;
@@ -17,6 +18,13 @@ interface Transaction {
   account_number: string;
   closing_balance: string;
   notes: string;
+
+    // 👇 Add these missing properties
+    account_ownership_type: string;
+    transaction_owner: string;
+    transaction_purpose: string;
+    is_recurring: boolean;
+    is_investment: boolean;
 }
 
 interface BankAccount {
@@ -40,6 +48,9 @@ export default function TransactionsPage() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState('all');
+  const [selectedTransaction, setSelectedTransaction] = useState<any>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
 
   // Form state
   const [formData, setFormData] = useState({
@@ -75,6 +86,33 @@ export default function TransactionsPage() {
   useEffect(() => {
     fetchData();
   }, []);
+
+  const handleTransactionClick = (transaction: Transaction) => {
+    setSelectedTransaction(transaction);
+    setIsModalOpen(true);
+  };
+
+  const handleModalClose = () => {
+    setIsModalOpen(false);
+    setSelectedTransaction(null);
+  };
+
+  const handleTransactionUpdate = (updatedTransaction: Transaction) => {
+    // Update the transaction in the local state
+    setTransactions(prev => prev.map(t => 
+      t.id === updatedTransaction.id ? updatedTransaction : t
+    ));
+  };
+
+  const handleTransactionDelete = (transactionId: number) => {
+    // Remove the transaction from local state
+    setTransactions(prev => prev.filter(t => t.id !== transactionId));
+    // Refetch bank accounts to update balances
+    fetch('/api/bank-accounts')
+      .then(res => res.json())
+      .then(setBankAccounts)
+      .catch(console.error);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -310,63 +348,79 @@ export default function TransactionsPage() {
         </select>
       </div>
 
-      {/* Transactions Table */}
-      <div className="bg-white shadow overflow-hidden rounded-md">
+            {/* Transactions Table - Update the row to be clickable */}
+            <div className="bg-white shadow overflow-hidden rounded-md">
         {filteredTransactions.length === 0 ? (
           <div className="text-center py-12">
-            <p className="text-gray-500 text-lg">No transactions yet</p>
-            <p className="text-gray-400 mt-2">Start by adding your first transaction!</p>
+            <p className="text-gray-500 text-lg">No transactions found</p>
           </div>
         ) : (
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Account</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Balance</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {filteredTransactions.map((transaction) => (
-                <tr key={transaction.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {new Date(transaction.date).toLocaleDateString('en-IN')}
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="text-sm font-medium text-gray-900">{transaction.description}</div>
-                    <div className="text-sm text-gray-500">
-                      <span 
-                        className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium mr-2"
-                        style={{ backgroundColor: transaction.category_color + '20', color: transaction.category_color }}
-                      >
-                        {transaction.category}
-                      </span>
-                      {transaction.merchant}
-                    </div>
-                    {transaction.notes && (
-                      <div className="text-xs text-gray-400 mt-1">{transaction.notes}</div>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {transaction.account}
-                  </td>
-                  <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${
-                    transaction.type === 'income' ? 'text-green-600' : 'text-red-600'
-                  }`}>
-                    {transaction.type === 'income' ? '+' : '-'}₹
-                    {parseFloat(transaction.amount).toLocaleString('en-IN')}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    ₹{parseFloat(transaction.closing_balance).toLocaleString('en-IN')}
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Person & Account</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Balance</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {filteredTransactions.map((transaction) => (
+                  <tr 
+                    key={transaction.id} 
+                    className="hover:bg-gray-50 cursor-pointer transition-colors"
+                    onClick={() => handleTransactionClick(transaction)}
+                  >
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {new Date(transaction.date).toLocaleDateString('en-IN')}
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="text-sm font-medium text-gray-900">{transaction.description}</div>
+                      <div className="text-sm text-gray-500">
+                        <span 
+                          className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium mr-2"
+                          style={{ backgroundColor: transaction.category_color + '20', color: transaction.category_color }}
+                        >
+                          {transaction.category}
+                        </span>
+                        {transaction.merchant}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <div className="capitalize font-medium text-indigo-600">{transaction.transaction_owner}</div>
+                      <div>{transaction.account}</div>
+                    </td>
+                    <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${
+                      transaction.type === 'income' ? 'text-green-600' : 'text-red-600'
+                    }`}>
+                      {transaction.type === 'income' ? '+' : '-'}₹
+                      {parseFloat(transaction.amount).toLocaleString('en-IN')}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      ₹{parseFloat(transaction.closing_balance).toLocaleString('en-IN')}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
+
+      {/* Add the Transaction Modal */}
+      <TransactionModal
+        transaction={selectedTransaction}
+        categories={categories}
+        // bankAccounts={bankAccounts}
+        isOpen={isModalOpen}
+        onClose={handleModalClose}
+        onUpdate={handleTransactionUpdate}
+        onDelete={handleTransactionDelete}
+      />
+    {/* </div> */}
+
     </div>
   );
 }

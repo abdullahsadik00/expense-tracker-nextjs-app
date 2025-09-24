@@ -61,3 +61,54 @@ export interface Account {
     accountType: 'sbi' | 'mom' | 'dad' |'baroda';
     balance: number;
 }
+
+export type OwnerType = 'me' | 'mom' | 'dad';
+export type AccountOwnerType = 'shared' | OwnerType;
+export type TransactionType = 'income' | 'expense' | 'transfer';
+
+export interface TransactionModel {
+  id: number;
+  date: string;
+  amount: string;
+  type: TransactionType;
+  description: string;
+  merchant: string;
+  category: string;
+  category_color: string;
+  account: string;
+  account_number: string;
+  account_ownership_type: AccountOwnerType;
+  closing_balance: string;
+  notes: string;
+  transaction_owner: OwnerType;
+  transaction_purpose: string;
+  is_recurring: boolean;
+  is_investment: boolean;
+}
+
+export interface Category {
+    id: number;
+    name: string;
+    type: TransactionType;
+    color: string;
+  }
+  
+  export interface BankAccount {
+    id: number;
+    bank_name: string;
+    account_number: string;
+    account_type: string;
+    account_owner: AccountOwnerType;
+    current_balance: number;
+    purpose: string;
+  }
+  
+  export interface AnalyticsData {
+    totalIncome: number;
+    totalExpense: number;
+    netSavings: number;
+    categoryWiseExpense: { [key: string]: number };
+    monthlyTrends: { [month: string]: { income: number; expense: number } };
+    recurringExpenses: Transaction[];
+    investmentTransactions: Transaction[];
+  }

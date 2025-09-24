@@ -69,6 +69,10 @@ export async function POST(request: Request) {
       newBalance = currentBalance - amount;
     }
 
+    console.log("transactionData:", transactionData);
+    console.log("currentBalance:", currentBalance);
+    console.log("amount:", amount);
+    console.log("newBalance:", newBalance);
     // Insert transaction
     const transactionResult = await client.query(
       `INSERT INTO transactions 
