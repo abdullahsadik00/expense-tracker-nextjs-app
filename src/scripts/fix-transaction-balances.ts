@@ -49,6 +49,7 @@ async function fixTransactionBalances() {
 
     let totalFixed = 0;
     let totalChecked = 0;
+    const accountUpdates: { [accountId: string]: number } = {};
 
     // Process each account separately
     for (const [accountId, transactions] of Object.entries(transactionsByAccount)) {
@@ -71,7 +72,6 @@ async function fixTransactionBalances() {
       console.log(`Account ${accountNumber} current balance: ${accountCurrentBalance}`);
 
       let runningBalance: number | null = null;
-      let previousTransaction: any = null;
 
       for (let i = 0; i < transactions.length; i++) {
         const transaction = transactions[i];
@@ -79,47 +79,19 @@ async function fixTransactionBalances() {
 
         // For the first transaction of the account, we need to determine the starting balance
         if (runningBalance === null) {
-          // Try to calculate what the balance should have been before this transaction
-          // This is tricky without knowing the initial balance, so we'll work backwards from known good data if possible
-          
-          // Look for a transaction with a correct closing balance later in the sequence
-          let referenceTransaction = null;
-          for (let j = transactions.length - 1; j > i; j--) {
-            if (transactions[j].closing_balance !== null) {
-              referenceTransaction = transactions[j];
-              break;
+          // Use the current account balance and work backwards through all transactions
+          runningBalance = accountCurrentBalance;
+          for (let j = transactions.length - 1; j >= 0; j--) {
+            const tempTrans = transactions[j];
+            const amount = parseFloat(tempTrans.amount);
+            
+            if (tempTrans.type === 'income') {
+              runningBalance -= amount;
+            } else {
+              runningBalance += amount;
             }
           }
-
-          if (referenceTransaction) {
-            // Work backwards from the reference transaction to calculate the starting balance
-            runningBalance = parseFloat(referenceTransaction.closing_balance);
-            for (let j = transactions.length - 1; j >= i; j--) {
-              const tempTrans = transactions[j];
-              const amount = parseFloat(tempTrans.amount);
-              
-              if (tempTrans.type === 'income') {
-                runningBalance -= amount;
-              } else {
-                runningBalance += amount;
-              }
-            }
-            console.log(`Calculated starting balance for account ${accountNumber}: ${runningBalance}`);
-          } else {
-            // If no reference transaction, use the current account balance and work backwards through all transactions
-            runningBalance = accountCurrentBalance;
-            for (let j = transactions.length - 1; j >= 0; j--) {
-              const tempTrans = transactions[j];
-              const amount = parseFloat(tempTrans.amount);
-              
-              if (tempTrans.type === 'income') {
-                runningBalance -= amount;
-              } else {
-                runningBalance += amount;
-              }
-            }
-            console.log(`Estimated starting balance for account ${accountNumber}: ${runningBalance}`);
-          }
+          console.log(`Estimated starting balance for account ${accountNumber}: ${runningBalance}`);
         }
 
         // Calculate what the closing balance should be for this transaction
@@ -155,9 +127,10 @@ async function fixTransactionBalances() {
 
           totalFixed++;
         }
-
-        previousTransaction = transaction;
       }
+
+      // Store the final calculated balance for updating the bank account
+      accountUpdates[accountId] = runningBalance!;
 
       // Verify the final calculated balance matches the account's current balance
       if (Math.abs(runningBalance! - accountCurrentBalance) > 0.01) {
@@ -170,11 +143,31 @@ async function fixTransactionBalances() {
       }
     }
 
+    // Update bank accounts with the latest balances
+    console.log('\n--- Updating Bank Account Balances ---');
+    for (const [accountId, newBalance] of Object.entries(accountUpdates)) {
+      const accountResult = await client.query(
+        'SELECT account_number FROM bank_accounts WHERE id = $1',
+        [accountId]
+      );
+      
+      if (accountResult.rows.length > 0) {
+        const accountNumber = accountResult.rows[0].account_number;
+        console.log(`Updating account ${accountNumber} to balance: ${newBalance}`);
+        
+        await client.query(
+          'UPDATE bank_accounts SET current_balance = $1 WHERE id = $2',
+          [newBalance, accountId]
+        );
+      }
+    }
+
     await client.query('COMMIT');
 
     console.log('\n=== Fix completed ===');
     console.log(`Transactions checked: ${totalChecked}`);
     console.log(`Transactions fixed: ${totalFixed}`);
+    console.log(`Bank accounts updated: ${Object.keys(accountUpdates).length}`);
     console.log('Database changes committed.');
 
   } catch (error) {
@@ -207,6 +200,3 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 }
 
 export { fixTransactionBalances };
-
-
-
