@@ -160,7 +160,7 @@ export default function InvestmentsPage() {
                   dataKey="value"
                   label={({ name, value }) => {
                     const total = investmentData.types.reduce((sum, entry) => sum + entry.value, 0);
-                    const calculatedPercent = (((value as number) / total) * 100).toFixed(0);
+                    const calculatedPercent = (((value as number) / total) * 100);
                     return `${name} (${calculatedPercent}%)`;
                   }}
                   

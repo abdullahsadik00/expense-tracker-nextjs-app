@@ -10,7 +10,6 @@
     "import-data": "tsx -r tsconfig-paths/register -r dotenv/config src/scripts/import-data.ts",
     "verify-balances": "tsx -r tsconfig-paths/register -r dotenv/config src/scripts/verify-transaction-balances.ts",
     "fix-balances": "tsx -r tsconfig-paths/register -r dotenv/config src/scripts/verify-transaction-balances.ts"
-
   },
   "dependencies": {
     "@radix-ui/react-label": "^2.1.7",
@@ -33,6 +32,7 @@
     "react-day-picker": "^9.11.0",
     "react-dom": "19.1.0",
     "recharts": "^3.2.1",
+    "simple-statistics": "^2.2.0",
     "tailwind-merge": "^3.3.1"
   },
   "devDependencies": {

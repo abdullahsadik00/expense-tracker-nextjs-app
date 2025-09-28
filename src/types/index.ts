@@ -1,6 +1,6 @@
 export interface Transaction {
     id?: string;
-    Date: string;
+    date: string;
     Details: string;
     Debit: string; // Use string to accommodate '-' for no debit  number | null;
     Credit: string; // Use string to accommodate '-' for no debit  number | null;
@@ -15,6 +15,8 @@ export interface Transaction {
         reference: string;
         transactionId: string;
       };
+      type: 'income' | 'expense'; 
+      amount: number;
       hash: string;
       Account?:'personal' | 'mom' | 'dad';
       IsInvestment?: boolean;

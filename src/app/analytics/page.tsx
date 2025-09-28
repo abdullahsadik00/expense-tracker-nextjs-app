@@ -162,8 +162,8 @@ export default function AnalyticsPage() {
                   label={(props) => {
                     const { name, value, percent } = props;
                     const calculatedPercent = percent !== null && percent !== undefined 
-                      ? (Number(percent) * 100).toFixed(0) 
-                      : (Number(value) / Number(props.total) * 100).toFixed(0);
+                      ? (Number(percent) * 100) 
+                      : (Number(value) / Number(props.total) * 100);
                     return `${name} (${calculatedPercent}%)`;
                   }}
                 >
